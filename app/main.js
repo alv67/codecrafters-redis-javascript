@@ -1,7 +1,7 @@
 const net = require("net");
 
 const server = net.createServer((connection) => {
-    // Handle connection
+    // Handle multiple connection
     connection.on('data', (data) => {
         connection.write('+PONG\r\n');
     })
