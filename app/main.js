@@ -6,9 +6,9 @@ function cmdlineParser(data) {
     let par = "";
     let ret = [];
 
-    let splitData = data.toString().split("\r\n");
+    let splitData = data.toString().split("\r\n").slice(0,-1);
     // --- debug ---
-    console.log(`\ncmdPArser: ${splitData}`);
+    console.log(`\ncmdParser: ${splitData}`);
 
     par = splitData.shift()
     if (par[0] !== "*") {
@@ -48,8 +48,6 @@ function cmdlineParser(data) {
                         console.log("Error: wrong string length");
                         return;
                     }
-                    // first string is a command -> force to UPPERCASE
-                    if (i === 0) s = s.toUpperCase();
                     ret.push(s);
                 }
                 break;
@@ -59,7 +57,6 @@ function cmdlineParser(data) {
         }
     }
     // Command is forced to be UPPERCASE
-    ret[0] 
     return ret;    
 }
 
@@ -88,37 +85,58 @@ const server = net.createServer((connection) => {
         console.log(`Command: ${cmdline}`);
 
         // ++++ COMMAND PARSER +++++
-        switch (cmdline[0]) {
+        let cmd = cmdline.shift().toUpperCase(); 
+        switch (cmd) {
             case 'COMMAND':
             case 'PING':
                 response = simpleString('PONG');
                 break;
             case 'ECHO':
-                if (cmdline.length < 2) {
+                if (cmdline.length < 1) {
                     response = simpleError('Syntax : ECHO message');
                 }
-                response = bulkString(cmdline[1]);
+                response = bulkString(cmdline.shift());
                 break;
             case 'SET':
-                if (cmdline.length < 3) {
-                    response = simpleError('Syntax: SET key value');
+                if (cmdline.length < 2) {
+                    response = simpleError('Syntax: SET key value [PX milliseconds]');
+                    break;
                 }
+                var key = cmdline.shift();
+                var value = cmdline.shift();
+                var pxtime = 0;
+                // check for additional parameters
+                var args = cmdline.length; 
+                while (cmdline.length > 0) {
+                    let p = cmdline.shift().toUpperCase();
+                    switch(p) {
+                        case 'PX':
+                            if (cmdline.length === 0) {
+                                response = simpleError('Syntax: SET key value [PX milliseconds]');
+                                break;
+                            }
+                            pxtime = Number(cmdline.shift())
+                            break;
+                    }
+                }                
                 // store parameter
-                memory[cmdline[1]] = cmdline[2];
+                memory[key] = value;
+                if (pxtime) setTimeout(() => {delete memory[key]}, pxtime);
                 response = simpleString('OK');
                 break;
             case 'GET':
-                if (cmdline.length < 2) {
+                if (cmdline.length < 1) {
                     response = simpleError('Syntax: GET key');
                 }
-                if (cmdline[1] in  memory) {
-                    response = bulkString(memory[cmdline[1]]);
+                var key = cmdline.shift();
+                if (key in memory) {
+                    response = bulkString(memory[key]);
                 } else {
                     response = bulkString(null);
                 }
                 break;
             default:
-                response = simpleError(`Command ${cmsline[0]} not managed`);
+                response = simpleError(`Command ${cmd} not managed`);
         }
 
         connection.write(response);
