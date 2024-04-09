@@ -1,5 +1,7 @@
 const net = require("net");
 
+const memory = {};
+
 function cmdlineParser(data) {
     let par = "";
     let ret = [];
@@ -65,9 +67,16 @@ function simpleString(s) {
     return `+${s}\r\n`;
 }
 
+function simpleError(s) {
+    return `-${s}\r\n`;
+}
 
 function bulkString(s) {
-    return `\$${s.length}\r\n${s}\r\n`;
+    if (s === null) {
+        return '\$-1\r\n';
+    } else {
+        return `\$${s.length}\r\n${s}\r\n`;
+    }
 }
 
 const server = net.createServer((connection) => {
@@ -85,8 +94,31 @@ const server = net.createServer((connection) => {
                 response = simpleString('PONG');
                 break;
             case 'ECHO':
+                if (cmdline.length < 2) {
+                    response = simpleError('Syntax : ECHO message');
+                }
                 response = bulkString(cmdline[1]);
                 break;
+            case 'SET':
+                if (cmdline.length < 3) {
+                    response = simpleError('Syntax: SET key value');
+                }
+                // store parameter
+                memory[cmdline[1]] = cmdline[2];
+                response = simpleString('OK');
+                break;
+            case 'GET':
+                if (cmdline.length < 2) {
+                    response = simpleError('Syntax: GET key');
+                }
+                if (cmdline[1] in  memory) {
+                    response = bulkString(memory[cmdline[1]]);
+                } else {
+                    response = bulkString(null);
+                }
+                break;
+            default:
+                response = simpleError(`Command ${cmsline[0]} not managed`);
         }
 
         connection.write(response);
