@@ -4,7 +4,10 @@ const memory = {}; // internal memory
 let listeningPort = 0;
 let masterHost = '';
 let masterPort = 0;
-let info = {}
+let replicationInfos = {
+    "master_replid": "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
+    "master_repl_offset": 0
+}
 
 const portIndex = process.argv.indexOf('--port');
 if (portIndex == -1 || !process.argv[portIndex +1]) {
@@ -15,9 +18,9 @@ if (portIndex == -1 || !process.argv[portIndex +1]) {
 
 const replicaofIndex = process.argv.indexOf('--replicaof');
 if (replicaofIndex == -1 || !process.argv[replicaofIndex +1] || !process.argv[replicaofIndex +2]) {
-    info['role'] = 'master';
+    replicationInfos['role'] = 'master';
 } else {
-    info['role'] = 'slave'
+    replicationInfos['role'] = 'slave'
 }
 
 
@@ -161,7 +164,12 @@ const server = net.createServer((connection) => {
                 }
                 var section = cmdline.shift();
                 if (section == 'replication') {
-                    response = bulkString(`role:${info['role']}`);
+                    let str = ''
+                    for ([key, value] of Object.entries(replicationInfos)) {
+                        str += `${key}:${value}\r\n`; 
+                    }
+                    str.slice(0,-2); // remove last two \r\n
+                    response = bulkString(str);
                 }
                 break;
 
