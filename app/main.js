@@ -2,6 +2,9 @@ const net = require("net");
 
 const memory = {}; // internal memory
 let listeningPort = 0;
+let masterHost = '';
+let masterPort = 0;
+let info = {}
 
 const portIndex = process.argv.indexOf('--port');
 if (portIndex == -1 || !process.argv[portIndex +1]) {
@@ -9,7 +12,14 @@ if (portIndex == -1 || !process.argv[portIndex +1]) {
 } else {
     listeningPort = Number(process.argv[portIndex +1]);
 }
-//
+
+const replicaofIndex = process.argv.indexOf('--replicaof');
+if (replicaofIndex == -1 || !process.argv[replicaofIndex +1] || !process.argv[replicaofIndex +2]) {
+    info['role'] = 'master';
+} else {
+    info['role'] = 'slave'
+}
+
 
 
 function cmdlineParser(data) {
@@ -151,7 +161,7 @@ const server = net.createServer((connection) => {
                 }
                 var section = cmdline.shift();
                 if (section == 'replication') {
-                    response = bulkString('role:master');
+                    response = bulkString(`role:${info['role']}`);
                 }
                 break;
 
