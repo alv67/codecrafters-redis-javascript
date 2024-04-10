@@ -1,6 +1,16 @@
 const net = require("net");
 
-const memory = {};
+const memory = {}; // internal memory
+let listeningPort = 0;
+
+const portIndex = process.argv.indexOf('--port');
+if (portIndex == -1 || !process.argv[portIndex +1]) {
+    listeningPort = 6379; 
+} else {
+    listeningPort = Number(process.argv[portIndex +1]);
+}
+//
+
 
 function cmdlineParser(data) {
     let par = "";
@@ -143,4 +153,4 @@ const server = net.createServer((connection) => {
     })
 });
 
-server.listen(6379, "127.0.0.1");
+server.listen(listeningPort, "127.0.0.1");
