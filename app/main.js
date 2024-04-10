@@ -145,6 +145,16 @@ const server = net.createServer((connection) => {
                     response = bulkString(null);
                 }
                 break;
+            case 'INFO':
+                if (cmdline.length < 1) {
+                    response = simpleError('Syntax: INFO [section]');
+                }
+                var section = cmdline.shift();
+                if (section == 'replication') {
+                    response = bulkString('role:master');
+                }
+                break;
+
             default:
                 response = simpleError(`Command ${cmd} not managed`);
         }
