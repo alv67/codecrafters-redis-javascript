@@ -116,7 +116,6 @@ function replicaConnection() {
         host: globalConfig.MASTER_HOST,
         port: globalConfig.MASTER_PORT
     });
-    
 
     // first connection
     replicaSocket.on('connect', () => {
@@ -142,7 +141,7 @@ function replicaConnection() {
                 break;
             case 'REPLCONF1':
                 if (cmd === 'OK') {
-                    const command = stringArray('REPLCONF', 'capa', 'psync2');
+                    const command = stringArray('REPLCONF', 'capa', 'eof', 'capa', 'psync2');
                     replicaSocket.write(command);
                     stage = 'REPLCONF2';
                 }
@@ -277,7 +276,7 @@ const server = net.createServer((connection) => {
                 if (cmdline.length < 1) {
                     response = simpleError('Syntax: PSYNC [section]');
                 }
-                response = simpleString('FULLRESYNC <REPL_ID> 0');
+                response = simpleString(`FULLRESYNC ${replicationInfos.master_replid} 0`);
                 break;
 
             default:
