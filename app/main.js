@@ -116,6 +116,7 @@ function replicaConnection() {
         host: globalConfig.MASTER_HOST,
         port: globalConfig.MASTER_PORT
     });
+    
 
     // first connection
     replicaSocket.on('connect', () => {
