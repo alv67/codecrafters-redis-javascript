@@ -1,9 +1,14 @@
 const net = require("net");
 
 const memory = {}; // internal memory
-let listeningPort = 0;
-let masterHost = '';
-let masterPort = 0;
+let globalConfig = {
+    PORT: 0,
+    MASTER_HOST: '',
+    MASTER_PORT: 0
+}
+// let globalConfig.PORT = 0;
+// let globalConfig.MASTER_HOST = '';
+// let globalConfig.MASTER_PORT = 0;
 let replicationInfos = {
     "master_replid": "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
     "master_repl_offset": 0
@@ -52,12 +57,13 @@ function cmdlineParser(data) {
     console.log(`\ncmdParser: ${splitData}`);
     
     par = splitData.shift()
+    let num = 1;
     if (par[0] !== "*") {
+        splitData.unshift(par)
+    } else {
         // --- debug ---
-        console.log("Error: Command must be a RESP array");
-        return;
+        num = Number(par.slice(1));
     }
-    let num = Number(par.slice(1));
     
     for (let i = 0; i < num; i++) {
         par = splitData.shift();
@@ -68,6 +74,8 @@ function cmdlineParser(data) {
         switch (par[0]) {
             // data type 
             case '+': // simple string
+                ret.push(par.slice(1));
+                break;
             case '-': // simple error
             case ':': // integer
                 console.log("Warning: Unmanaged type");
@@ -100,15 +108,72 @@ function cmdlineParser(data) {
     return ret;    
 }
 
+function replicaConnection() {
+    var stage = 'PING' // then 'REPLCONF1', 'REPLCONF2', 'PSYNC'
+
+    // Connect to the master server
+    const replicaSocket = net.createConnection({
+        host: globalConfig.MASTER_HOST,
+        port: globalConfig.MASTER_PORT
+    });
+
+    // first connection
+    replicaSocket.on('connect', () => {
+        console.log(`Connected to master at ${globalConfig.MASTER_HOST}:${globalConfig.MASTER_PORT}`);
+        const command = stringArray('ping');
+        replicaSocket.write(command);
+    });
+
+    replicaSocket.on('data', (data) => {
+        const cmdline = cmdlineParser(data);
+        console.log(`replica response: ${cmdline}`);
+
+        // ++++ RESPONSE PARSER +++++
+        let cmd = cmdline.shift().toUpperCase(); 
+
+        switch (stage) {
+            case 'PING':
+                if (cmd === 'PONG') {
+                    const command = stringArray('REPLCONF', 'listening-port', `${globalConfig.PORT}`);
+                    replicaSocket.write(command);
+                    stage = 'REPLCONF1';
+                }
+                break;
+            case 'REPLCONF1':
+                if (cmd === 'OK') {
+                    const command = stringArray('REPLCONF', 'capa', 'psync2');
+                    replicaSocket.write(command);
+                    stage = 'REPLCONF2';
+                }
+                break;
+            case 'REPLCONF2':
+                if (cmd === 'OK') {
+                    //const command = stringArray('REPLCONF', 'capa', 'psync2');
+                    //replicaSocket.write(command);
+                    //stage = 'REPLCONF2';
+                }
+                break;
+            case 'PSYNC':
+                break;
+
+        }
+
+    }) 
+    // Handle errors
+    replicaSocket.on('error', (err) => {
+        console.error('Error connecting to the master!!');
+    });
+}
+
   /////////////////////
  //    MAIN CODE    //
 /////////////////////
 
 const portIndex = process.argv.indexOf('--port');
 if (portIndex == -1 || !process.argv[portIndex +1]) {
-    listeningPort = 6379; 
+    globalConfig.PORT = 6379; 
 } else {
-    listeningPort = Number(process.argv[portIndex +1]);
+    globalConfig.PORT = Number(process.argv[portIndex +1]);
 }
 
 const replicaofIndex = process.argv.indexOf('--replicaof');
@@ -118,28 +183,11 @@ if (replicaofIndex == -1 || !process.argv[replicaofIndex +1] || !process.argv[re
     replicationInfos['role'] = 'slave'
     // --- debug ---
     console.log('--replicaof');
-    masterHost = process.argv[replicaofIndex +1];
-    masterPort = Number(process.argv[replicaofIndex +2]);
+    globalConfig.MASTER_HOST = process.argv[replicaofIndex +1];
+    globalConfig.MASTER_PORT = Number(process.argv[replicaofIndex +2]);
 }
 
-if (replicationInfos.role === 'slave') {
-    // --- debug ---
-    // Connect to the master server
-    const replicaSocket = net.createConnection({
-        host: masterHost,
-        port: masterPort
-    }, () => {
-        console.log(`Connected to master at ${masterHost}:${masterPort}`);
-        const command = stringArray('ping');
-        replicaSocket.write(command);
-    });
-    
-    // Handle errors
-    replicaSocket.on('error', (err) => {
-        console.error('Error connecting to the master!!');
-    });
-}
-
+if (replicationInfos.role === 'slave') replicaConnection();
 
 const server = net.createServer((connection) => {
     // Handle multiple connection
@@ -214,6 +262,12 @@ const server = net.createServer((connection) => {
                     response = bulkString(str);
                 }
                 break;
+            case 'REPLCONF':
+                if (cmdline.length < 1) {
+                    response = simpleError('Syntax: REPLCONF [section]');
+                }
+                response = simpleString('OK');
+                break;
 
             default:
                 response = simpleError(`Command ${cmd} not managed`);
@@ -223,4 +277,4 @@ const server = net.createServer((connection) => {
     })
 });
 
-server.listen(listeningPort, "127.0.0.1");
+server.listen(globalConfig.PORT, "127.0.0.1");
