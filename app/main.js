@@ -9,30 +9,48 @@ let replicationInfos = {
     "master_repl_offset": 0
 }
 
-const portIndex = process.argv.indexOf('--port');
-if (portIndex == -1 || !process.argv[portIndex +1]) {
-    listeningPort = 6379; 
-} else {
-    listeningPort = Number(process.argv[portIndex +1]);
+// -----------------------------
+// Redis serialization functions
+// -----------------------------
+
+function simpleString(s) {
+    return `+${s}\r\n`;
 }
 
-const replicaofIndex = process.argv.indexOf('--replicaof');
-if (replicaofIndex == -1 || !process.argv[replicaofIndex +1] || !process.argv[replicaofIndex +2]) {
-    replicationInfos['role'] = 'master';
-} else {
-    replicationInfos['role'] = 'slave'
+function simpleError(s) {
+    return `-${s}\r\n`;
 }
 
+function bulkString(s) {
+    if (s === null) {
+        return '\$-1\r\n';
+    } else {
+        return `\$${s.length}\r\n${s}\r\n`;
+    }
+}
 
+function stringArray(cmd) {
+    const args = [...arguments];
+    console.log(`stringArray: ${args}`)
+    let ret = "";
+    ret += `\*${args.length}\r\n`
+    for (const arg of args) {
+        ret += bulkString(arg)
+    }
+    return ret;
+}
 
+// ----------------------------------
+// Redis command line deserialization
+// ----------------------------------
 function cmdlineParser(data) {
     let par = "";
     let ret = [];
-
+    
     let splitData = data.toString().split("\r\n").slice(0,-1);
     // --- debug ---
     console.log(`\ncmdParser: ${splitData}`);
-
+    
     par = splitData.shift()
     if (par[0] !== "*") {
         // --- debug ---
@@ -79,25 +97,49 @@ function cmdlineParser(data) {
                 return;
         }
     }
-    // Command is forced to be UPPERCASE
     return ret;    
 }
 
-function simpleString(s) {
-    return `+${s}\r\n`;
+  /////////////////////
+ //    MAIN CODE    //
+/////////////////////
+
+const portIndex = process.argv.indexOf('--port');
+if (portIndex == -1 || !process.argv[portIndex +1]) {
+    listeningPort = 6379; 
+} else {
+    listeningPort = Number(process.argv[portIndex +1]);
 }
 
-function simpleError(s) {
-    return `-${s}\r\n`;
+const replicaofIndex = process.argv.indexOf('--replicaof');
+if (replicaofIndex == -1 || !process.argv[replicaofIndex +1] || !process.argv[replicaofIndex +2]) {
+    replicationInfos['role'] = 'master';
+} else {
+    replicationInfos['role'] = 'slave'
+    // --- debug ---
+    console.log('--replicaof');
+    masterHost = process.argv[replicaofIndex +1];
+    masterPort = Number(process.argv[replicaofIndex +2]);
 }
 
-function bulkString(s) {
-    if (s === null) {
-        return '\$-1\r\n';
-    } else {
-        return `\$${s.length}\r\n${s}\r\n`;
-    }
+if (replicationInfos.role === 'slave') {
+    // --- debug ---
+    // Connect to the master server
+    const replicaSocket = net.createConnection({
+        host: masterHost,
+        port: masterPort
+    }, () => {
+        console.log(`Connected to master at ${masterHost}:${masterPort}`);
+        const command = stringArray('ping');
+        replicaSocket.write(command);
+    });
+    
+    // Handle errors
+    replicaSocket.on('error', (err) => {
+        console.error('Error connecting to the master!!');
+    });
 }
+
 
 const server = net.createServer((connection) => {
     // Handle multiple connection
