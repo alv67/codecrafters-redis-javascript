@@ -148,12 +148,15 @@ function replicaConnection() {
                 break;
             case 'REPLCONF2':
                 if (cmd === 'OK') {
-                    //const command = stringArray('REPLCONF', 'capa', 'psync2');
-                    //replicaSocket.write(command);
-                    //stage = 'REPLCONF2';
+                    const command = stringArray('PSYNC', '?', '-1');
+                    replicaSocket.write(command);
+                    stage = 'PSYNC';
                 }
                 break;
             case 'PSYNC':
+                if (cmd === 'FULLSRESYNC <REPL_ID> 0') {
+
+                }
                 break;
 
         }
@@ -267,6 +270,13 @@ const server = net.createServer((connection) => {
                     response = simpleError('Syntax: REPLCONF [section]');
                 }
                 response = simpleString('OK');
+                break;
+
+            case 'PSYNC':
+                if (cmdline.length < 1) {
+                    response = simpleError('Syntax: PSYNC [section]');
+                }
+                response = simpleString('FULLRESYNC <REPL_ID> 0');
                 break;
 
             default:
