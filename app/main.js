@@ -105,7 +105,8 @@ function cmdlineParser(data) {
                 return;
         }
     }
-    return ret;    
+    return ret;
+    
 }
 
 function replicaConnection() {
