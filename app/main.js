@@ -9,10 +9,11 @@ let globalConfig = {
 // let globalConfig.PORT = 0;
 // let globalConfig.MASTER_HOST = '';
 // let globalConfig.MASTER_PORT = 0;
-let replicationInfos = {
+const replicationInfos = {
     "master_replid": "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
     "master_repl_offset": 0
 }
+const empty_rdb_base64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
 
 // -----------------------------
 // Redis serialization functions
@@ -34,6 +35,11 @@ function bulkString(s) {
     }
 }
 
+function bulkData(s) {
+    return `\$${s.length}\r\n${s}`;
+}
+
+
 function stringArray(cmd) {
     const args = [...arguments];
     console.log(`stringArray: ${args}`)
@@ -52,7 +58,7 @@ function cmdlineParser(data) {
     let par = "";
     let ret = [];
     
-    let splitData = data.toString().split("\r\n").slice(0,-1);
+    let splitData = data.toString().split("\r\n");
     // --- debug ---
     console.log(`\ncmdParser: ${splitData}`);
     
@@ -80,17 +86,29 @@ function cmdlineParser(data) {
             case ':': // integer
                 console.log("Warning: Unmanaged type");
                 return;
-            case '$': // Bulk string
+            case '$': // Bulk string or Bulk data
                 if (par.length < 2) {
                     console.log("Error: undefined parameter");
                     return;
                 }
                 let len = Number(par.slice(1));
+
                 // check for "null" string
                 if (len === -1) {
                     ret.push(null);
                     break;
                 } else {
+                    // check if is a bulk string or a bulk data
+                    let dataStart = data.indexOf("\r\n") + 2;
+                    // let filedata = data.subarray(dataStart,len);
+                    if (data[0].toString() === '$') {
+                        if (data.length === (dataStart + len)) {
+                            console.log('!! this is a BulkString')
+                        } else {
+                            console.log('!! this is a BulkData')
+                        }
+                    }
+
                     // next par contain string (lenght len)
                     let s = splitData.shift();
                     if (s.length !== len) {
@@ -106,7 +124,7 @@ function cmdlineParser(data) {
         }
     }
     return ret;
-    
+
 }
 
 function replicaConnection() {
@@ -155,9 +173,12 @@ function replicaConnection() {
                 }
                 break;
             case 'PSYNC':
-                if (cmd === 'FULLSRESYNC <REPL_ID> 0') {
-
+                if (cmd.split(' ')[0] === 'FULLSRESYNC') {
+                    // now wait for RDB 
+                    stage = 'RDB';
                 }
+                break;
+            case 'RDB':
                 break;
         }
 
@@ -277,6 +298,10 @@ const server = net.createServer((connection) => {
                     response = simpleError('Syntax: PSYNC [section]');
                 }
                 response = simpleString(`FULLRESYNC ${replicationInfos.master_replid} 0`);
+                console.log(`>> Response: ${response}`);
+                connection.write(response);
+                response = bulkData(atob(empty_rdb_base64));
+                console.log(`>> Response: ${response}`);
                 break;
 
             default:
