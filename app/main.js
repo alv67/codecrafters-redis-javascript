@@ -109,15 +109,15 @@ function cmdlineParser(data) {
                             isString = false;
                             ret.push('FILE');
                             ret.push(data.subarray(dataStart));
-                        } else {
-                            console.log('!! this is a BulkString');
-                            let s = splitData.shift();
-                            if (s.length !== len) {
-                                console.log("Error: wrong string length");
-                                return;
-                            }
-                            ret.push(s);
                         }
+                    } else {
+                        console.log('!! this is a BulkString');
+                        let s = splitData.shift();
+                        if (s.length !== len) {
+                            console.log("Error: wrong string length");
+                            return;
+                        }
+                        ret.push(s);
                     }
 
                     // next par contain string (lenght len)
