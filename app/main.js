@@ -13,7 +13,6 @@ const replicationInfos = {
     "master_replid": "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb",
     "master_repl_offset": 0
 }
-const empty_rdb_base64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
 
 // -----------------------------
 // Redis serialization functions
@@ -35,11 +34,6 @@ function bulkString(s) {
     }
 }
 
-function bulkData(s) {
-    return `\$${s.length}\r\n${s}`;
-}
-
-
 function stringArray(cmd) {
     const args = [...arguments];
     console.log(`stringArray: ${args}`)
@@ -49,6 +43,13 @@ function stringArray(cmd) {
         ret += bulkString(arg)
     }
     return ret;
+}
+
+function bufferRDBFile() {
+    const empty_rdb_base64 = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog==";
+    const rdbBuffer = Buffer.from(empty_rdb_base64, "base64");
+    const rdbHead = Buffer.from(`$${rdbBuffer.length}\r\n`);
+    return Buffer.concat([rdbHead,rdbBuffer]);
 }
 
 // ----------------------------------
@@ -87,6 +88,7 @@ function cmdlineParser(data) {
                 console.log("Warning: Unmanaged type");
                 return;
             case '$': // Bulk string or Bulk data
+                let isString = true;
                 if (par.length < 2) {
                     console.log("Error: undefined parameter");
                     return;
@@ -101,21 +103,28 @@ function cmdlineParser(data) {
                     // check if is a bulk string or a bulk data
                     let dataStart = data.indexOf("\r\n") + 2;
                     // let filedata = data.subarray(dataStart,len);
-                    if (data[0].toString() === '$') {
+                    if (data.toString()[0] === '$') {
                         if (data.length === (dataStart + len)) {
-                            console.log('!! this is a BulkString')
+                            console.log('!! this is a BulkData');
+                            isString = false;
+                            ret.push('FILE');
+                            ret.push(data.subarray(dataStart));
                         } else {
-                            console.log('!! this is a BulkData')
+                            console.log('!! this is a BulkString');
+                            let s = splitData.shift();
+                            if (s.length !== len) {
+                                console.log("Error: wrong string length");
+                                return;
+                            }
+                            ret.push(s);
                         }
                     }
 
                     // next par contain string (lenght len)
-                    let s = splitData.shift();
-                    if (s.length !== len) {
-                        console.log("Error: wrong string length");
-                        return;
+                    if (isString) {
+                    } else {
+                        ret.push("FILE");
                     }
-                    ret.push(s);
                 }
                 break;
             default:
@@ -225,14 +234,17 @@ const server = net.createServer((connection) => {
         let cmd = cmdline.shift().toUpperCase(); 
         switch (cmd) {
             case 'COMMAND':
+                break;
             case 'PING':
                 response = simpleString('PONG');
+                connection.write(response);
                 break;
             case 'ECHO':
                 if (cmdline.length < 1) {
                     response = simpleError('Syntax : ECHO message');
                 }
                 response = bulkString(cmdline.shift());
+                connection.write(response);
                 break;
             case 'SET':
                 if (cmdline.length < 2) {
@@ -260,6 +272,7 @@ const server = net.createServer((connection) => {
                 memory[key] = value;
                 if (pxtime) setTimeout(() => {delete memory[key]}, pxtime);
                 response = simpleString('OK');
+                connection.write(response);
                 break;
             case 'GET':
                 if (cmdline.length < 1) {
@@ -271,6 +284,7 @@ const server = net.createServer((connection) => {
                 } else {
                     response = bulkString(null);
                 }
+                connection.write(response);
                 break;
             case 'INFO':
                 if (cmdline.length < 1) {
@@ -285,12 +299,14 @@ const server = net.createServer((connection) => {
                     str.slice(0,-2); // remove last two \r\n
                     response = bulkString(str);
                 }
+                connection.write(response);
                 break;
             case 'REPLCONF':
                 if (cmdline.length < 1) {
                     response = simpleError('Syntax: REPLCONF [section]');
                 }
                 response = simpleString('OK');
+                connection.write(response);
                 break;
 
             case 'PSYNC':
@@ -300,15 +316,16 @@ const server = net.createServer((connection) => {
                 response = simpleString(`FULLRESYNC ${replicationInfos.master_replid} 0`);
                 console.log(`>> Response: ${response}`);
                 connection.write(response);
-                response = bulkData(atob(empty_rdb_base64));
-                console.log(`>> Response: ${response}`);
+                const filedata = bufferRDBFile();
+                console.log(`>> Response: ${filedata}`);
+                connection.write(filedata);
                 break;
 
             default:
                 response = simpleError(`Command ${cmd} not managed`);
+                connection.write(response);
         }
 
-        connection.write(response);
     })
 });
 
